@@ -82,8 +82,6 @@ typedef struct pidns_key {
     u64 slot;
 } pidns_key_t;
 
-BPF_HASH(start, u32);
-STORAGE
 BPF_PERF_OUTPUT(migrations);
 
 
@@ -95,7 +93,6 @@ static int trace_enqueue(u32 tgid, u32 pid)
     if (FILTER || pid == 0)
         return 0;
     u64 ts = bpf_ktime_get_ns();
-    start.update(&pid, &ts);
     return 0;
 }
 
@@ -126,7 +123,6 @@ RAW_TRACEPOINT_PROBE(sched_switch)
         pid = prev->pid;
         if (!(FILTER || pid == 0)) {
             u64 ts = bpf_ktime_get_ns();
-            start.update(&pid, &ts);
         }
     }
 
@@ -139,18 +135,6 @@ RAW_TRACEPOINT_PROBE(sched_switch)
 
     migrations.perf_submit(ctx, &pid, sizeof(pid));
 
-    // fetch timestamp and calculate delta
-    tsp = start.lookup(&pid);
-    if (tsp == 0) {
-        return 0;   // missed enqueue
-    }
-    delta = bpf_ktime_get_ns() - *tsp;
-    FACTOR
-
-    // store as histogram
-    STORE
-
-    start.delete(&pid);
     return 0;
 }
 """
@@ -164,40 +148,7 @@ if args.pid:
 else:
     bpf_text = bpf_text.replace('FILTER', '0')
 
-if args.milliseconds:
-    bpf_text = bpf_text.replace('FACTOR', 'delta /= 1000000;')
-    label = "msecs"
-else:
-    bpf_text = bpf_text.replace('FACTOR', 'delta /= 1000;')
-    label = "usecs"
 
-if args.pids or args.tids:
-    section = "pid"
-    pid = "tgid"
-    if args.tids:
-        pid = "pid"
-        section = "tid"
-    bpf_text = bpf_text.replace('STORAGE',
-        'BPF_HISTOGRAM(dist, pid_key_t);')
-    bpf_text = bpf_text.replace('STORE',
-        'pid_key_t key = {.id = ' + pid + ', .slot = bpf_log2l(delta)}; ' +
-        'dist.increment(key);')
-elif args.pidnss:
-    section = "pidns"
-    bpf_text = bpf_text.replace('STORAGE',
-        'BPF_HISTOGRAM(dist, pidns_key_t);')
-    bpf_text = bpf_text.replace('STORE', 'pidns_key_t key = ' +
-        '{.id = prev->nsproxy->pid_ns_for_children->ns.inum, ' +
-        '.slot = bpf_log2l(delta)}; dist.increment(key);')
-else:
-    section = ""
-    bpf_text = bpf_text.replace('STORAGE', 'BPF_HISTOGRAM(dist);')
-    bpf_text = bpf_text.replace('STORE',
-        'dist.increment(bpf_log2l(delta));')
-if debug or args.ebpf:
-    print(bpf_text)
-    if args.ebpf:
-        exit()
 
 # load BPF program
 b = BPF(text=bpf_text)
@@ -209,7 +160,6 @@ def print_event(cpu, data, size):
 
 # output
 exiting = 0 if args.interval else 1
-dist = b.get_table("dist")
 b["migrations"].open_perf_buffer(print_event)
 
 while (1):
