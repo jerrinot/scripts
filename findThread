@@ -1,9 +1,11 @@
 #!/bin/sh
 
-pid=$1
+jvmName=$1
 name=$2
 
-lines=$(jstack $1 | grep "$name")
+pid=$(findJvm "$jvmName")
+
+lines=$(jstack $pid | grep "$name")
 #echo $lines
 
 lineCount=$(echo "$lines" | wc -l)
