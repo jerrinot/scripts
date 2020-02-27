@@ -43,26 +43,12 @@ parser = argparse.ArgumentParser(
     epilog=examples)
 parser.add_argument("-T", "--timestamp", action="store_true",
     help="include timestamp on output")
-parser.add_argument("-m", "--milliseconds", action="store_true",
-    help="millisecond histogram")
-parser.add_argument("-P", "--pids", action="store_true",
-    help="print a histogram per process ID")
-# PID options are --pid and --pids, so namespaces should be --pidns (not done
-# yet) and --pidnss:
-parser.add_argument("--pidnss", action="store_true",
-    help="print a histogram per PID namespace")
-parser.add_argument("-L", "--tids", action="store_true",
-    help="print a histogram per thread ID")
-parser.add_argument("-p", "--pid",
-    help="trace this PID only")
+parser.add_argument("-p", "--pid", help="trace this PID only", required=True)
 parser.add_argument("interval", nargs="?", default=99999999,
     help="output interval, in seconds")
-parser.add_argument("count", nargs="?", default=99999999,
-    help="number of outputs")
 parser.add_argument("--ebpf", action="store_true",
     help=argparse.SUPPRESS)
 args = parser.parse_args()
-countdown = int(args.count)
 debug = 0
 
 # define BPF program
@@ -81,6 +67,10 @@ typedef struct pidns_key {
     u64 id;    // work around
     u64 slot;
 } pidns_key_t;
+
+struct data_t {
+    u64 cpu;
+};
 
 BPF_PERF_OUTPUT(migrations);
 
@@ -131,9 +121,11 @@ RAW_TRACEPOINT_PROBE(sched_switch)
     pid = next->pid;
     if (FILTER || pid == 0)
         return 0;
-    u64 *tsp, delta;
 
-    migrations.perf_submit(ctx, &pid, sizeof(pid));
+    uint cpu = next->cpu;
+    struct data_t data = {};
+    data.cpu = cpu;
+    migrations.perf_submit(ctx, &data, sizeof(data));
 
     return 0;
 }
@@ -156,7 +148,8 @@ b = BPF(text=bpf_text)
 print("Tracing run queue latency... Hit Ctrl-C to end.")
 
 def print_event(cpu, data, size):
-    print(".")
+    event = b["migrations"].event(data)
+    print(event.cpu)
 
 # output
 exiting = 0 if args.interval else 1
