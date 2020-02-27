@@ -1,0 +1,12 @@
+#!/bin/sh
+
+name=$1
+pid=$(findJvm "$name")
+
+lines=`jstack $pid | grep "nid="`
+#echo $lines
+
+#echo "$lines"
+
+names=$(echo "$lines" | sed 's/^"\(.*\)".*/\1/')
+echo "$names"

@@ -113,6 +113,9 @@ RAW_TRACEPOINT_PROBE(sched_switch)
         pid = prev->pid;
         if (!(FILTER || pid == 0)) {
             u64 ts = bpf_ktime_get_ns();
+            struct data_t data = {};
+            data.cpu = prev->cpu;
+            migrations.perf_submit(ctx, &data, sizeof(data));
         }
     }
 
@@ -123,9 +126,9 @@ RAW_TRACEPOINT_PROBE(sched_switch)
         return 0;
 
     uint cpu = next->cpu;
-    struct data_t data = {};
-    data.cpu = cpu;
-    migrations.perf_submit(ctx, &data, sizeof(data));
+//    struct data_t data = {};
+//    data.cpu = cpu;
+//    migrations.perf_submit(ctx, &data, sizeof(data));
 
     return 0;
 }
