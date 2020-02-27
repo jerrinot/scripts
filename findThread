@@ -1,0 +1,31 @@
+#!/bin/sh
+
+pid=$1
+name=$2
+
+lines=$(jstack $1 | grep "$name")
+#echo $lines
+
+lineCount=$(echo "$lines" | wc -l)
+#echo $lineCount
+
+if [ "$lineCount" -eq "0" ]; then
+   echo "No thread with name $name found";
+   exit 2;
+fi
+
+if [ "$lineCount" -gt "1" ]; then
+   echo "Multiple thread with name $name found";
+   exit 3;
+fi
+#echo $lines
+
+nid=$(echo $lines | grep -o 'nid=[^[:space:]]*')
+#echo $nid
+
+nidHex=$(echo $nid | cut -f2 -d "=")
+#echo $nidHex
+
+nidDec=`echo $(($nidHex))`
+echo $nidDec
+
